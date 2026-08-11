@@ -1,0 +1,104 @@
+﻿using Microsoft.AspNetCore.Mvc;
+using smart_table.Interfaces;
+using smart_table.Models;
+
+namespace smart_table.Controllers
+{
+
+    [ApiController]
+    [Route("api/[controller]")]
+    public class MachineController : ControllerBase
+    {
+        private readonly IMachineService _service;
+
+        public MachineController(IMachineService service)
+        {
+            _service = service;
+        }
+
+
+        [HttpPost]
+        public async Task<IActionResult> CreateMachine(CreateandUpdateMachineRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var id = await _service.CreateMachineAsync(request);
+
+            return Ok(new
+            {
+                message = "Machine created successfully",
+                machineId = id
+            });
+        }
+
+
+        [HttpGet]
+        public async Task<IActionResult> GetAllMachines()
+        {
+            var machines = await _service.GetAllMachinesAsync();
+
+            return Ok(machines);
+        }
+
+
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetMachineById(int id)
+        {
+            var machine = await _service.GetMachineByIdAsync(id);
+
+            if (machine == null)
+            {
+                return NotFound(new
+                {
+                    message = "Machine not found."
+                });
+            }
+
+            return Ok(machine);
+        }
+
+
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateMachine(int id, CreateandUpdateMachineRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _service.UpdateMachineAsync(id, request);
+
+            if (!result)
+            {
+                return NotFound(new
+                {
+                    message = "Machine not found."
+                });
+            }
+
+            return Ok(new
+            {
+                message = "Machine updated successfully."
+            });
+        }
+
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteMachine(int id)
+        {
+            var result = await _service.DeleteMachineAsync(id);
+
+            if (!result)
+            {
+                return NotFound(new
+                {
+                    message = "Machine not found."
+                });
+            }
+
+            return Ok(new
+            {
+                message = "Machine deleted successfully."
+            });
+        }
+    }
+}

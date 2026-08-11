@@ -1,0 +1,6 @@
+@smart_table_HostAddress = http://localhost:5135
+
+GET {{smart_table_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
