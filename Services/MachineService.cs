@@ -56,5 +56,10 @@ namespace smart_table.Services
         {
             return await _repository.GetMachineDetailByIdAsync(id);
         }
+
+        public async Task<bool> UpdateOperationHoursAsync(UpdateOperationHoursRequest request)
+        {
+            return await _repository.UpdateOperationHoursAsync(request.MachineId, request.SecondsToAdd);
+        }
     }
 }

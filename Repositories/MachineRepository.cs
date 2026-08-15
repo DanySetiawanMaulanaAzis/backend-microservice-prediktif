@@ -284,5 +284,18 @@ namespace smart_table.Repositories
 
             return await db.QueryFirstOrDefaultAsync<MachineDetail>(sql, new { Id = id });
         }
+
+        public async Task<bool> UpdateOperationHoursAsync(int machineId, int secondsToAdd)
+        {
+            using var db = Connection;
+            var sql = @"
+        UPDATE machine_detail 
+        SET operation_hours = operation_hours + @SecondsToAdd,
+            last_update = GETDATE()
+        WHERE machine_id = @MachineId;";
+
+            var rowsAffected = await db.ExecuteAsync(sql, new { MachineId = machineId, SecondsToAdd = secondsToAdd });
+            return rowsAffected > 0;
+        }
     }
 }
