@@ -46,5 +46,15 @@ namespace smart_table.Services
 
             return await _repository.DeleteMachineAsync(id);
         }
+
+        public async Task<IEnumerable<MachineDetail>> GetAllMachineDetailsAsync()
+        {
+            return await _repository.GetAllMachineDetailsAsync();
+        }
+
+        public async Task<MachineDetail?> GetMachineDetailByIdAsync(int id)
+        {
+            return await _repository.GetMachineDetailByIdAsync(id);
+        }
     }
 }

@@ -100,5 +100,27 @@ namespace smart_table.Controllers
                 message = "Machine deleted successfully."
             });
         }
+
+        // GET: api/MachineDetail
+        [HttpGet("details")]
+        public async Task<ActionResult<IEnumerable<MachineDetail>>> GetAllMachineDetails()
+        {
+            var result = await _service.GetAllMachineDetailsAsync();
+            return Ok(result);
+        }
+
+        // GET: api/MachineDetail/5
+        [HttpGet("details/{id}")]
+        public async Task<ActionResult<MachineDetail>> GetMachineDetailById(int id)
+        {
+            var result = await _service.GetMachineDetailByIdAsync(id);
+
+            if (result == null)
+            {
+                return NotFound(new { message = $"Machine detail dengan ID {id} tidak ditemukan." });
+            }
+
+            return Ok(result);
+        }
     }
 }

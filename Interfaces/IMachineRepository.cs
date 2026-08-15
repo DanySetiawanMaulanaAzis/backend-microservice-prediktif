@@ -9,5 +9,7 @@ namespace smart_table.Interfaces
         Task<Machine?> GetMachineByIdAsync(int id);
         Task<bool> UpdateMachineAsync(int id, CreateandUpdateMachineRequest request);
         Task<bool> DeleteMachineAsync(int id);
+        Task<IEnumerable<MachineDetail>> GetAllMachineDetailsAsync();
+        Task<MachineDetail?> GetMachineDetailByIdAsync(int id);
     }
 }
