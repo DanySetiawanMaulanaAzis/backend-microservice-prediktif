@@ -11,5 +11,6 @@ namespace smart_table.Interfaces
         Task<bool> DeleteMachineAsync(int id);
         Task<IEnumerable<MachineDetail>> GetAllMachineDetailsAsync();
         Task<MachineDetail?> GetMachineDetailByIdAsync(int id);
+        Task<bool> UpdateOperationHoursAsync(UpdateOperationHoursRequest request);
     }
 }

@@ -122,5 +122,19 @@ namespace smart_table.Controllers
 
             return Ok(result);
         }
+
+        // PUT: api/MachineDetail/operation-hours
+        [HttpPut("operation-hours")]
+        public async Task<IActionResult> UpdateOperationHours([FromBody] UpdateOperationHoursRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var updated = await _service.UpdateOperationHoursAsync(request);
+            if (!updated)
+                return NotFound(new { message = "Machine detail not found" });
+
+            return Ok(new { message = "Operation hours updated successfully" });
+        }
     }
 }
