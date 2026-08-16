@@ -3,6 +3,8 @@ using Microsoft.Data.SqlClient;
 using System.Data;
 using smart_table.Interfaces;
 using smart_table.Models;
+using QRCoder;
+using smart_table.Helpers;
 
 namespace smart_table.Repositories
 {
@@ -34,39 +36,50 @@ namespace smart_table.Repositories
             {
                 // 1. Insert ke tabel machine & ambil Machine ID yang baru
                 var sqlInsertMachine = @"
-            INSERT INTO machine (machine_name, location, production_year, created_at)
-            VALUES (@MachineName, @Location, @ProductionYear, GETDATE());
-
-            SELECT CAST(SCOPE_IDENTITY() AS INT);";
+                    INSERT INTO machine (machine_name, location, production_year, created_at)
+                    VALUES (@MachineName, @Location, @ProductionYear, GETDATE());
+                    SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
                 int newMachineId = await db.ExecuteScalarAsync<int>(sqlInsertMachine, request, transaction);
 
-                // 2. Insert ke tabel machine_detail (termasuk production_year, operation_hours, downtime_hours)
+                // 2. Generate QR Code (Contoh payload: ID / URL / JSON data mesin)
+                string qrContent = $"MACHINE-ID:{newMachineId}|NAME:{request.MachineName}";
+                byte[] qrCodeBytes = QrCodeHelper.GeneratePngQrCode(qrContent);
+
+                // 3. Update kolom qr_code di tabel machine
+                var sqlUpdateQrCode = @"
+                    UPDATE machine 
+                    SET qr_code = @QrCode 
+                    WHERE id = @Id;";
+
+                await db.ExecuteAsync(sqlUpdateQrCode, new { QrCode = qrCodeBytes, Id = newMachineId }, transaction);
+
+                // 4. Insert ke tabel machine_detail
                 var sqlInsertDetail = @"
-            INSERT INTO machine_detail (
-                machine_id, 
-                machine_name, 
-                location, 
-                production_year,
-                operation_hours,
-                downtime_hours,
-                ahs,
-                status_id, 
-                first_update, 
-                last_update
-            ) 
-            VALUES (
-                @MachineId, 
-                @MachineName, 
-                @Location, 
-                @ProductionYear,
-                @OperationHours,
-                @DowntimeHours,
-                @Ahs,
-                (SELECT id FROM machine_status WHERE status_name = @StatusName), 
-                GETDATE(), 
-                GETDATE()
-            );";
+                    INSERT INTO machine_detail (
+                        machine_id, 
+                        machine_name, 
+                        location, 
+                        production_year,
+                        operation_hours,
+                        downtime_hours,
+                        ahs,
+                        status_id, 
+                        first_update, 
+                        last_update
+                    ) 
+                    VALUES (
+                        @MachineId, 
+                        @MachineName, 
+                        @Location, 
+                        @ProductionYear,
+                        @OperationHours,
+                        @DowntimeHours,
+                        @Ahs,
+                        (SELECT id FROM machine_status WHERE status_name = @StatusName), 
+                        GETDATE(), 
+                        GETDATE()
+                    );";
 
                 var detailParameters = new
                 {
@@ -74,15 +87,15 @@ namespace smart_table.Repositories
                     MachineName = request.MachineName,
                     Location = request.Location,
                     ProductionYear = request.ProductionYear,
-                    OperationHours = 0,             // Nilai awal saat machine baru dibuat
-                    DowntimeHours = 0.00m,           // Nilai awal saat machine baru dibuat
+                    OperationHours = 0,
+                    DowntimeHours = 0.00m,
                     Ahs = 100,
-                    StatusName = "Routine"          // Nama status yang dicari
+                    StatusName = "Routine"
                 };
 
                 await db.ExecuteAsync(sqlInsertDetail, detailParameters, transaction);
 
-                // 3. Commit transaksi jika semua berhasil
+                // 5. Commit transaksi jika semua berhasil
                 await transaction.CommitAsync();
 
                 return newMachineId;
@@ -296,6 +309,19 @@ namespace smart_table.Repositories
 
             var rowsAffected = await db.ExecuteAsync(sql, new { MachineId = machineId, SecondsToAdd = secondsToAdd });
             return rowsAffected > 0;
+        }
+
+        public async Task<byte[]?> GetQrCodeImageAsync(int machineDetailId)
+        {
+            using var db = Connection;
+
+            var sql = @"
+        SELECT m.qr_code 
+        FROM machine m
+        INNER JOIN machine_detail md ON m.id = md.machine_id
+        WHERE md.id = @DetailId;";
+
+            return await db.QueryFirstOrDefaultAsync<byte[]?>(sql, new { DetailId = machineDetailId });
         }
     }
 }

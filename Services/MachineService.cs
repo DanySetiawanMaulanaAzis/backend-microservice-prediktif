@@ -61,5 +61,10 @@ namespace smart_table.Services
         {
             return await _repository.UpdateOperationHoursAsync(request.MachineId, request.SecondsToAdd);
         }
+
+        public async Task<byte[]?> GetQrCodeImageAsync(int id)
+        {
+            return await _repository.GetQrCodeImageAsync(id);
+        }
     }
 }
