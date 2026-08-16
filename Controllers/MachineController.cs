@@ -136,5 +136,22 @@ namespace smart_table.Controllers
 
             return Ok(new { message = "Operation hours updated successfully" });
         }
+
+        [HttpGet("qr-code/{id}")]
+        public async Task<IActionResult> GetMachineQrCode(int id)
+        {
+            var qrBytes = await _service.GetQrCodeImageAsync(id);
+
+            if (qrBytes == null || qrBytes.Length == 0)
+            {
+                return NotFound(new
+                {
+                    message = "QR Code tidak ditemukan untuk mesin ini."
+                });
+            }
+
+            // Mengembalikan file biner gambar PNG secara langsung
+            return File(qrBytes, "image/png");
+        }
     }
 }

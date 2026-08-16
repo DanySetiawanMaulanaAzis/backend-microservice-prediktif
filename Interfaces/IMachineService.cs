@@ -12,5 +12,6 @@ namespace smart_table.Interfaces
         Task<IEnumerable<MachineDetail>> GetAllMachineDetailsAsync();
         Task<MachineDetail?> GetMachineDetailByIdAsync(int id);
         Task<bool> UpdateOperationHoursAsync(UpdateOperationHoursRequest request);
+        Task<byte[]?> GetQrCodeImageAsync(int id);
     }
 }
