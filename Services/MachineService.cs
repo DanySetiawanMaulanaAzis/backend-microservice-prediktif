@@ -62,9 +62,29 @@ namespace smart_table.Services
             return await _repository.UpdateOperationHoursAsync(request.MachineId, request.SecondsToAdd);
         }
 
+        public async Task<bool> UpdateDowntimeHoursAsync(UpdateDowntimeHoursRequest request)
+        {
+            return await _repository.UpdateDowntimeHoursAsync(request.MachineId, request.SecondsToAdd);
+        }
+
         public async Task<byte[]?> GetQrCodeImageAsync(int id)
         {
             return await _repository.GetQrCodeImageAsync(id);
+        }
+
+        public async Task<IEnumerable<UnderMaintenance>> GetUnderMaintenanceAsync()
+        {
+            return await _repository.GetUnderMaintenanceAsync();
+        }
+
+        public async Task<UnderMaintenance?> GetUnderMaintenanceByIdAsync(int id)
+        {
+            return await _repository.GetUnderMaintenanceByIdAsync(id);
+        }
+
+        public async Task<int> CreateUnderMaintenanceAsync(CreateUnderMaintenanceRequest request)
+        {
+            return await _repository.CreateUnderMaintenanceAsync(request);
         }
     }
 }

@@ -311,6 +311,19 @@ namespace smart_table.Repositories
             return rowsAffected > 0;
         }
 
+        public async Task<bool> UpdateDowntimeHoursAsync(int machineId, int secondsToAdd)
+        {
+            using var db = Connection;
+            var sql = @"
+        UPDATE machine_detail 
+        SET downtime_hours = downtime_hours + @SecondsToAdd,
+            last_update = GETDATE()
+        WHERE machine_id = @MachineId;";
+
+            var rowsAffected = await db.ExecuteAsync(sql, new { MachineId = machineId, SecondsToAdd = secondsToAdd });
+            return rowsAffected > 0;
+        }
+
         public async Task<byte[]?> GetQrCodeImageAsync(int machineDetailId)
         {
             using var db = Connection;
@@ -322,6 +335,61 @@ namespace smart_table.Repositories
         WHERE md.id = @DetailId;";
 
             return await db.QueryFirstOrDefaultAsync<byte[]?>(sql, new { DetailId = machineDetailId });
+        }
+
+        public async Task<IEnumerable<UnderMaintenance>> GetUnderMaintenanceAsync()
+        {
+            using var db = Connection;
+
+            var sql = @"
+        SELECT 
+            um.id AS Id, 
+            um.machine_id AS MachineId, 
+            um.machine_name AS MachineName, 
+            um.maintenance AS Maintenance, 
+            um.created_at AS CreatedAt, 
+            md.id AS MachineDetailId, 
+            md.location AS Location, 
+            md.ahs AS Ahs 
+        FROM undermaintenance um 
+        LEFT JOIN machine_detail md ON um.machine_id = md.machine_id;";
+
+            return await db.QueryAsync<UnderMaintenance>(sql);
+        }
+
+        public async Task<UnderMaintenance?> GetUnderMaintenanceByIdAsync(int id)
+        {
+            using var db = Connection;
+
+            var sql = @"
+        SELECT 
+            um.id AS Id, 
+            um.machine_id AS MachineId, 
+            um.machine_name AS MachineName, 
+            um.maintenance AS Maintenance, 
+            um.created_at AS CreatedAt, 
+            md.id AS MachineDetailId, 
+            md.location AS Location, 
+            md.ahs AS Ahs 
+        FROM undermaintenance um 
+        LEFT JOIN machine_detail md ON um.machine_id = md.machine_id 
+        WHERE um.id = @Id;";
+
+            return await db.QueryFirstOrDefaultAsync<UnderMaintenance>(sql, new { Id = id });
+        }
+
+
+        public async Task<int> CreateUnderMaintenanceAsync(CreateUnderMaintenanceRequest request)
+        {
+            using var db = Connection;
+            var sql = @"
+                INSERT INTO undermaintenance
+                    (machine_id, machine_name, maintenance, created_at)
+                VALUES 
+                    (@MachineId, @MachineName, @Maintenance, GETDATE());
+                SELECT CAST(SCOPE_IDENTITY() AS INT);";
+
+            return await db.ExecuteScalarAsync<int>(sql, request);
         }
     }
 }
