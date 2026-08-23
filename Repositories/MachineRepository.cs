@@ -469,13 +469,13 @@ namespace smart_table.Repositories
 
             try
             {
-                // 1. Update kolom maintenance menjadi 0 di tabel undermaintenance
-                var sqlUpdate = @"
+                // 1. Update status maintenance ke 0
+                var sqlUpdateStatus = @"
                     UPDATE undermaintenance
                     SET maintenance = 0
                     WHERE id = @Id;";
 
-                int rowsAffected = await db.ExecuteAsync(sqlUpdate, new { Id = id }, transaction);
+                int rowsAffected = await db.ExecuteAsync(sqlUpdateStatus, new { Id = id }, transaction);
 
                 if (rowsAffected == 0)
                 {
@@ -483,19 +483,28 @@ namespace smart_table.Repositories
                     return false;
                 }
 
-                // 2. Insert riwayat aksi ke tabel action
+                // 2. Insert ke tabel [action] dan ambil Generated ID (SQL Server OUTPUT)
                 var sqlInsertAction = @"
                     INSERT INTO [action] (user_id, name, [action], created_at)
+                    OUTPUT INSERTED.id
                     VALUES (@UserId, @Name, @Action, GETDATE());";
 
-                await db.ExecuteAsync(sqlInsertAction, new
+                int actionId = await db.ExecuteScalarAsync<int>(sqlInsertAction, new
                 {
                     UserId = request.UserId,
                     Name = request.Name,
                     Action = string.IsNullOrWhiteSpace(request.Action) ? "Maintenance Completed" : request.Action
                 }, transaction);
 
-                // 3. Commit transaksi jika kedua operasi berhasil
+                // 3. Update kolom action_id di tabel undermaintenance
+                var sqlUpdateActionId = @"
+                    UPDATE undermaintenance
+                    SET action_id = @ActionId
+                    WHERE id = @Id;";
+
+                await db.ExecuteAsync(sqlUpdateActionId, new { ActionId = actionId, Id = id }, transaction);
+
+                // 4. Commit transaksi jika semua langkah berhasil
                 await transaction.CommitAsync();
                 return true;
             }
