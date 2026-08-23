@@ -197,5 +197,26 @@ namespace smart_table.Controllers
             var id = await _service.CreateUnderMaintenanceAsync(request);
             return Ok(new { message = "Permintaan maintenance berhasil dibuat", id });
         }
+
+
+        [HttpPut("under-maintenance/complete/{id}")]
+        public async Task<IActionResult> CompleteUnderMaintenance(int id, [FromBody] UpdateUnderMaintenanceStatusRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var isSuccess = await _service.UpdateUnderMaintenanceStatusToFalseAsync(id, request);
+
+            if (!isSuccess)
+            {
+                return NotFound(new { message = $"Data UnderMaintenance dengan ID {id} tidak ditemukan." });
+            }
+
+            return Ok(new
+            {
+                message = "Status maintenance berhasil diubah ke 0 dan log action berhasil disimpan.",
+                id = id
+            });
+        }
     }
 }

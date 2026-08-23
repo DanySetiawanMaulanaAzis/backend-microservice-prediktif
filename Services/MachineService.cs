@@ -86,5 +86,10 @@ namespace smart_table.Services
         {
             return await _repository.CreateUnderMaintenanceAsync(request);
         }
+
+        public async Task<bool> UpdateUnderMaintenanceStatusToFalseAsync(int id, UpdateUnderMaintenanceStatusRequest request)
+        {
+            return await _repository.UpdateUnderMaintenanceStatusToFalseAsync(id, request);
+        }
     }
 }

@@ -17,5 +17,6 @@ namespace smart_table.Interfaces
         Task<IEnumerable<UnderMaintenance>> GetUnderMaintenanceAsync();
         Task<UnderMaintenance?> GetUnderMaintenanceByIdAsync(int id);
         Task<int> CreateUnderMaintenanceAsync(CreateUnderMaintenanceRequest request);
+        Task<bool> UpdateUnderMaintenanceStatusToFalseAsync(int id, UpdateUnderMaintenanceStatusRequest request);
     }
 }
