@@ -137,6 +137,20 @@ namespace smart_table.Controllers
             return Ok(new { message = "Operation hours updated successfully" });
         }
 
+        // PUT: api/Machine/downtime-hours
+        [HttpPut("downtime-hours")]
+        public async Task<IActionResult> UpdateDowntimeHours([FromBody] UpdateDowntimeHoursRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var updated = await _service.UpdateDowntimeHoursAsync(request);
+            if (!updated)
+                return NotFound(new { message = "Machine detail not found" });
+
+            return Ok(new { message = "Downtime hours updated successfully" });
+        }
+
         [HttpGet("qr-code/{id}")]
         public async Task<IActionResult> GetMachineQrCode(int id)
         {
@@ -152,6 +166,57 @@ namespace smart_table.Controllers
 
             // Mengembalikan file biner gambar PNG secara langsung
             return File(qrBytes, "image/png");
+        }
+
+        [HttpGet("under-maintenance")]
+        public async Task<IActionResult> GetUnderMaintenance()
+        {
+            var data = await _service.GetUnderMaintenanceAsync();
+            return Ok(data);
+        }
+
+        [HttpGet("under-maintenance/{id}")]
+        public async Task<IActionResult> GetUnderMaintenanceById(int id)
+        {
+            var data = await _service.GetUnderMaintenanceByIdAsync(id);
+            if (data == null)
+            {
+                return NotFound(new { message = $"Data maintenance dengan ID {id} tidak ditemukan." });
+            }
+
+            return Ok(data);
+        }
+
+     
+        [HttpPost("under-maintenance")]
+        public async Task<IActionResult> CreateUnderMaintenance([FromBody] CreateUnderMaintenanceRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var id = await _service.CreateUnderMaintenanceAsync(request);
+            return Ok(new { message = "Permintaan maintenance berhasil dibuat", id });
+        }
+
+
+        [HttpPut("under-maintenance/complete/{id}")]
+        public async Task<IActionResult> CompleteUnderMaintenance(int id, [FromBody] UpdateUnderMaintenanceStatusRequest request)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var isSuccess = await _service.UpdateUnderMaintenanceStatusToFalseAsync(id, request);
+
+            if (!isSuccess)
+            {
+                return NotFound(new { message = $"Data UnderMaintenance dengan ID {id} tidak ditemukan." });
+            }
+
+            return Ok(new
+            {
+                message = "Status maintenance berhasil diubah ke 0 dan log action berhasil disimpan.",
+                id = id
+            });
         }
     }
 }

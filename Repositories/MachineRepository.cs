@@ -311,6 +311,19 @@ namespace smart_table.Repositories
             return rowsAffected > 0;
         }
 
+        public async Task<bool> UpdateDowntimeHoursAsync(int machineId, int secondsToAdd)
+        {
+            using var db = Connection;
+            var sql = @"
+        UPDATE machine_detail 
+        SET downtime_hours = downtime_hours + @SecondsToAdd,
+            last_update = GETDATE()
+        WHERE machine_id = @MachineId;";
+
+            var rowsAffected = await db.ExecuteAsync(sql, new { MachineId = machineId, SecondsToAdd = secondsToAdd });
+            return rowsAffected > 0;
+        }
+
         public async Task<byte[]?> GetQrCodeImageAsync(int machineDetailId)
         {
             using var db = Connection;
@@ -322,6 +335,184 @@ namespace smart_table.Repositories
         WHERE md.id = @DetailId;";
 
             return await db.QueryFirstOrDefaultAsync<byte[]?>(sql, new { DetailId = machineDetailId });
+        }
+
+        public async Task<IEnumerable<UnderMaintenance>> GetUnderMaintenanceAsync()
+        {
+            using var db = Connection;
+
+            var sql = @"SELECT 
+                    um.id AS Id, 
+                    um.machine_id AS MachineId, 
+                    um.machine_name AS MachineName, 
+                    um.maintenance AS Maintenance, 
+                    um.created_at AS CreatedAt, 
+                    um.event_id AS EventId,
+                    em.event AS Event,
+                    em.maintenance_type AS MaintenanceType,
+                    md.id AS MachineDetailId, 
+                    md.location AS Location, 
+                    md.ahs AS Ahs,
+                    md.production_year AS ProductionYear,
+                    md.operation_hours AS OperationHours,
+                    md.downtime_hours AS DowntimeHours,
+                    ms.status_name AS StatusName
+                FROM undermaintenance um 
+                LEFT JOIN machine_detail md ON um.machine_id = md.machine_id
+                LEFT JOIN machine_status ms ON md.status_id = ms.id
+                LEFT JOIN event_maintenance em ON um.event_id = em.id
+                WHERE um.maintenance = 1;";
+
+            return await db.QueryAsync<UnderMaintenance>(sql);
+        }
+
+        public async Task<UnderMaintenance?> GetUnderMaintenanceByIdAsync(int id)
+        {
+            using var db = Connection;
+
+            var sql = @"
+        SELECT 
+            um.id AS Id, 
+            um.machine_id AS MachineId, 
+            um.machine_name AS MachineName, 
+            um.maintenance AS Maintenance, 
+            um.created_at AS CreatedAt, 
+            um.event_id AS EventId,
+
+            em.event AS Event,
+            em.maintenance_type AS MaintenanceType,
+
+            md.id AS MachineDetailId, 
+            md.location AS Location, 
+            md.ahs AS Ahs,
+            md.production_year AS ProductionYear,
+            md.operation_hours AS OperationHours,
+            md.downtime_hours AS DowntimeHours,
+
+            ms.status_name AS StatusName,
+
+            -- Days since last Service
+            DATEDIFF(
+                DAY,
+                last_service.created_at,
+                um.created_at
+            ) AS DaysSinceLastService,
+
+            -- Days between previous Failure and current event
+            DATEDIFF(
+                DAY,
+                previous_failure.created_at,
+                um.created_at
+            ) AS DaysBetweenEvents
+
+        FROM undermaintenance um 
+
+        LEFT JOIN machine_detail md 
+            ON um.machine_id = md.machine_id 
+
+        LEFT JOIN machine_status ms 
+            ON md.status_id = ms.id
+
+        LEFT JOIN event_maintenance em 
+            ON um.event_id = em.id
+
+        OUTER APPLY (
+            SELECT TOP 1
+                service.created_at
+            FROM undermaintenance service
+            WHERE service.machine_id = um.machine_id
+              AND service.event_id = 1
+              AND service.created_at < um.created_at
+            ORDER BY service.created_at DESC
+        ) last_service
+
+        OUTER APPLY (
+            SELECT TOP 1
+                failure.created_at
+            FROM undermaintenance failure
+            WHERE failure.machine_id = um.machine_id
+              AND failure.event_id = 2
+              AND failure.created_at < um.created_at
+            ORDER BY failure.created_at DESC
+        ) previous_failure
+
+        WHERE um.id = @Id;
+    ";
+
+            return await db.QueryFirstOrDefaultAsync<UnderMaintenance>(
+                sql,
+                new { Id = id }
+            );
+        }
+
+
+        public async Task<int> CreateUnderMaintenanceAsync(CreateUnderMaintenanceRequest request)
+        {
+            using var db = Connection;
+            var sql = @"
+                INSERT INTO undermaintenance
+                    (machine_id, machine_name, maintenance, event_id, created_at)
+                VALUES 
+                    (@MachineId, @MachineName, @Maintenance, @EventId, GETDATE());
+
+                SELECT CAST(SCOPE_IDENTITY() AS INT);";
+
+            return await db.ExecuteScalarAsync<int>(sql, request);
+        }
+
+        public async Task<bool> UpdateUnderMaintenanceStatusToFalseAsync(int id, UpdateUnderMaintenanceStatusRequest request)
+        {
+            using var db = Connection;
+            await db.OpenAsync();
+
+            await using var transaction = await db.BeginTransactionAsync();
+
+            try
+            {
+                // 1. Update status maintenance ke 0
+                var sqlUpdateStatus = @"
+                    UPDATE undermaintenance
+                    SET maintenance = 0
+                    WHERE id = @Id;";
+
+                int rowsAffected = await db.ExecuteAsync(sqlUpdateStatus, new { Id = id }, transaction);
+
+                if (rowsAffected == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return false;
+                }
+
+                // 2. Insert ke tabel [action] dan ambil Generated ID (SQL Server OUTPUT)
+                var sqlInsertAction = @"
+                    INSERT INTO [action] (user_id, name, [action], created_at)
+                    OUTPUT INSERTED.id
+                    VALUES (@UserId, @Name, @Action, GETDATE());";
+
+                int actionId = await db.ExecuteScalarAsync<int>(sqlInsertAction, new
+                {
+                    UserId = request.UserId,
+                    Name = request.Name,
+                    Action = string.IsNullOrWhiteSpace(request.Action) ? "Maintenance Completed" : request.Action
+                }, transaction);
+
+                // 3. Update kolom action_id di tabel undermaintenance
+                var sqlUpdateActionId = @"
+                    UPDATE undermaintenance
+                    SET action_id = @ActionId
+                    WHERE id = @Id;";
+
+                await db.ExecuteAsync(sqlUpdateActionId, new { ActionId = actionId, Id = id }, transaction);
+
+                // 4. Commit transaksi jika semua langkah berhasil
+                await transaction.CommitAsync();
+                return true;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
     }
 }
