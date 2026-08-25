@@ -82,6 +82,11 @@ namespace smart_table.Services
             return await _repository.GetUnderMaintenanceByIdAsync(id);
         }
 
+        public async Task<IEnumerable<CompletedMaintenance>> GetCompletedMaintenanceHistoryByMachineDetailIdAsync(int machineDetailId)
+        {
+            return await _repository.GetCompletedMaintenanceHistoryByMachineDetailIdAsync(machineDetailId);
+        }
+
         public async Task<int> CreateUnderMaintenanceAsync(CreateUnderMaintenanceRequest request)
         {
             return await _repository.CreateUnderMaintenanceAsync(request);

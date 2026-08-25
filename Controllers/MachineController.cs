@@ -187,7 +187,17 @@ namespace smart_table.Controllers
             return Ok(data);
         }
 
-     
+        [HttpGet("completed-maintenance/machine-detail/history/{machineDetailId}")]
+        public async Task<IActionResult> GetCompletedMaintenanceHistoryByMachineDetailId(int machineDetailId)
+        {
+            var result = await _service.GetCompletedMaintenanceHistoryByMachineDetailIdAsync(machineDetailId);
+
+            if (result == null || !result.Any())
+                return NotFound(new { message = $"No completed maintenance history with actions found for Machine Detail ID {machineDetailId}." });
+
+            return Ok(result);
+        }
+
         [HttpPost("under-maintenance")]
         public async Task<IActionResult> CreateUnderMaintenance([FromBody] CreateUnderMaintenanceRequest request)
         {
