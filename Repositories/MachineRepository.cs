@@ -446,6 +446,33 @@ namespace smart_table.Repositories
         }
 
 
+        public async Task<IEnumerable<MachineHistoryItem>> GetMachineHistoryAsync(int machineId)
+        {
+            using var db = Connection;
+
+            var sql = @"
+                SELECT
+                    um.id AS Id,
+                    um.machine_id AS MachineId,
+                    um.machine_name AS MachineName,
+                    um.maintenance AS Maintenance,
+                    um.created_at AS CreatedAt,
+                    um.event_id AS EventId,
+                    em.event AS Event,
+                    em.maintenance_type AS MaintenanceType,
+                    um.action_id AS ActionId,
+                    a.name AS ActionBy,
+                    a.action AS ActionTaken,
+                    a.created_at AS ActionCreatedAt
+                FROM undermaintenance um
+                LEFT JOIN event_maintenance em ON um.event_id = em.id
+                LEFT JOIN [action] a ON um.action_id = a.id
+                WHERE um.machine_id = @MachineId
+                ORDER BY um.created_at DESC;";
+
+            return await db.QueryAsync<MachineHistoryItem>(sql, new { MachineId = machineId });
+        }
+
         public async Task<int> CreateUnderMaintenanceAsync(CreateUnderMaintenanceRequest request)
         {
             using var db = Connection;

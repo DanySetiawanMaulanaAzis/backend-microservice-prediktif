@@ -168,6 +168,15 @@ namespace smart_table.Controllers
             return File(qrBytes, "image/png");
         }
 
+        // GET: api/Machine/history/5 - full undermaintenance history for a machine,
+        // active or completed (unlike under-maintenance, which is active-only).
+        [HttpGet("history/{machineId}")]
+        public async Task<IActionResult> GetMachineHistory(int machineId)
+        {
+            var data = await _service.GetMachineHistoryAsync(machineId);
+            return Ok(data);
+        }
+
         [HttpGet("under-maintenance")]
         public async Task<IActionResult> GetUnderMaintenance()
         {

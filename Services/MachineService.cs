@@ -72,6 +72,11 @@ namespace smart_table.Services
             return await _repository.GetQrCodeImageAsync(id);
         }
 
+        public async Task<IEnumerable<MachineHistoryItem>> GetMachineHistoryAsync(int machineId)
+        {
+            return await _repository.GetMachineHistoryAsync(machineId);
+        }
+
         public async Task<IEnumerable<UnderMaintenance>> GetUnderMaintenanceAsync()
         {
             return await _repository.GetUnderMaintenanceAsync();

@@ -14,6 +14,7 @@ namespace smart_table.Interfaces
         Task<bool> UpdateOperationHoursAsync(UpdateOperationHoursRequest request);
         Task<bool> UpdateDowntimeHoursAsync(UpdateDowntimeHoursRequest request);
         Task<byte[]?> GetQrCodeImageAsync(int id);
+        Task<IEnumerable<MachineHistoryItem>> GetMachineHistoryAsync(int machineId);
         Task<IEnumerable<UnderMaintenance>> GetUnderMaintenanceAsync();
         Task<UnderMaintenance?> GetUnderMaintenanceByIdAsync(int id);
         Task<int> CreateUnderMaintenanceAsync(CreateUnderMaintenanceRequest request);
