@@ -450,33 +450,93 @@ namespace smart_table.Repositories
             using var db = Connection;
 
             var sql = @"
-                SELECT 
-                    um.id AS Id, 
-                    um.machine_id AS MachineId, 
-                    um.machine_name AS MachineName, 
-                    um.maintenance AS Maintenance, 
-                    um.last_update AS LastUpdate, 
-                    um.event_id AS EventId,
-                    em.event AS Event,
-                    em.maintenance_type AS MaintenanceType,
-                    md.id AS MachineDetailId, 
-                    md.location AS Location, 
-                    md.ahs AS Ahs,
-                    um.action_id AS ActionId,
+        SELECT 
+            um.id AS Id, 
+            um.machine_id AS MachineId, 
+            um.machine_name AS MachineName, 
+            um.maintenance AS Maintenance, 
+            um.last_update AS LastUpdate, 
+            um.event_id AS EventId,
+            em.event AS Event,
+            em.maintenance_type AS MaintenanceType,
+            md.id AS MachineDetailId, 
+            md.location AS Location, 
+            md.ahs AS Ahs,
+            um.action_id AS ActionId,
                     act.action AS Action
-                FROM undermaintenance um 
-                LEFT JOIN machine_detail md 
-                    ON um.machine_id = md.machine_id 
-                LEFT JOIN event_maintenance em 
-                    ON um.event_id = em.id
-                INNER JOIN action act
-                    ON um.action_id = act.id
-                WHERE md.id = @MachineDetailId  
-                  AND um.maintenance = 0  
-                  AND um.action_id IS NOT NULL
-                ORDER BY um.id DESC;";
+        FROM undermaintenance um 
+        LEFT JOIN machine_detail md 
+            ON um.machine_id = md.machine_id 
+        LEFT JOIN event_maintenance em 
+            ON um.event_id = em.id
+        INNER JOIN action act
+            ON um.action_id = act.id
+        WHERE md.id = @MachineDetailId
+            AND um.maintenance = 0
+            AND um.action_id IS NOT NULL
+        ORDER BY um.id DESC;";
 
             return await db.QueryAsync<CompletedMaintenance>(
+                sql,
+                new { MachineDetailId = machineDetailId }
+            );
+        }
+
+        public async Task<CompletedMaintenanceForAI?> GetCompletedMaintenanceHistoryByMachineDetailIdAsyncForAI(int machineDetailId)
+        {
+            using var db = Connection;
+
+            var sql = @"
+        SELECT TOP 1
+            um.id AS Id, 
+            um.machine_id AS MachineId, 
+            um.machine_name AS MachineName, 
+            md.production_year AS ProductionYear,
+            -- Perhitungan umur mesin berdasarkan tahun saat ini
+            CASE 
+                WHEN md.production_year IS NOT NULL 
+                THEN YEAR(GETDATE()) - md.production_year 
+                ELSE NULL 
+            END AS MachineAge,
+            md.operation_hours AS OperationHours,
+            md.downtime_hours AS DowntimeHours,
+            DATEDIFF(
+                DAY,
+                last_service.TargetDate,
+                COALESCE(um.last_update, um.created_at)
+            ) AS DaysSinceLastService,
+            DATEDIFF(
+                DAY,
+                previous_failure.TargetDate,
+                COALESCE(um.last_update, um.created_at)
+            ) AS DaysBetweenEvents
+        FROM undermaintenance um 
+        LEFT JOIN machine_detail md 
+            ON um.machine_id = md.machine_id 
+        OUTER APPLY (
+            SELECT TOP 1
+                COALESCE(service.last_update, service.created_at) AS TargetDate
+            FROM undermaintenance service
+            WHERE service.machine_id = um.machine_id
+              AND service.event_id = 1
+              AND service.id < um.id
+            ORDER BY service.id DESC
+        ) last_service
+        OUTER APPLY (
+            SELECT TOP 1
+                COALESCE(failure.last_update, failure.created_at) AS TargetDate
+            FROM undermaintenance failure
+            WHERE failure.machine_id = um.machine_id
+              AND failure.event_id = 2
+              AND failure.id < um.id
+            ORDER BY failure.id DESC
+        ) previous_failure
+        WHERE md.id = @MachineDetailId
+            AND um.maintenance = 0
+            AND um.action_id IS NOT NULL
+        ORDER BY um.id DESC;";
+
+            return await db.QueryFirstOrDefaultAsync<CompletedMaintenanceForAI>(
                 sql,
                 new { MachineDetailId = machineDetailId }
             );
@@ -508,9 +568,9 @@ namespace smart_table.Repositories
             {
                 // 1. Insert ke tabel [action] dan ambil Generated ID
                 var sqlInsertAction = @"
-            INSERT INTO [action] (user_id, name, [action], created_at)
-            OUTPUT INSERTED.id
-            VALUES (@UserId, @Name, @Action, GETDATE());";
+    INSERT INTO [action] (user_id, name, [action], created_at)
+    OUTPUT INSERTED.id
+    VALUES (@UserId, @Name, @Action, GETDATE());";
 
                 int actionId = await db.ExecuteScalarAsync<int>(sqlInsertAction, new
                 {
@@ -519,15 +579,17 @@ namespace smart_table.Repositories
                     Action = string.IsNullOrWhiteSpace(request.Action) ? "Maintenance Completed" : request.Action
                 }, transaction);
 
-                // 2. Update status maintenance, action_id, dan last_update sekaligus
+                // 2. Update status maintenance, action_id, last_update, ahs, dan status_id
                 var sqlUpdate = @"
-            UPDATE undermaintenance
-            SET maintenance = 0,
-                action_id = @ActionId,
-                last_update = GETDATE()
-            WHERE id = @Id;";
+    UPDATE undermaintenance
+    SET maintenance = 0,
+        action_id = @ActionId,
+        ahs = @Ahs,
+        status_id = @StatusId,
+        last_update = GETDATE()
+    WHERE id = @Id;";
 
-                int rowsAffected = await db.ExecuteAsync(sqlUpdate, new { ActionId = actionId, Id = id }, transaction);
+                int rowsAffected = await db.ExecuteAsync(sqlUpdate, new { ActionId = actionId, Ahs = request.Ahs, StatusId = request.StatusId, Id = id}, transaction);
 
                 if (rowsAffected == 0)
                 {
