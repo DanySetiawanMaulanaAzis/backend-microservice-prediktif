@@ -579,23 +579,33 @@ namespace smart_table.Repositories
                     Action = string.IsNullOrWhiteSpace(request.Action) ? "Maintenance Completed" : request.Action
                 }, transaction);
 
-                // 2. Update status maintenance, action_id, last_update, ahs, dan status_id
+                // 2a. Tutup work order-nya. ahs & status_id ada di machine_detail,
+                //     bukan di undermaintenance - jadi di-update terpisah di 2b.
                 var sqlUpdate = @"
     UPDATE undermaintenance
     SET maintenance = 0,
         action_id = @ActionId,
-        ahs = @Ahs,
-        status_id = @StatusId,
         last_update = GETDATE()
     WHERE id = @Id;";
 
-                int rowsAffected = await db.ExecuteAsync(sqlUpdate, new { ActionId = actionId, Ahs = request.Ahs, StatusId = request.StatusId, Id = id}, transaction);
+                int rowsAffected = await db.ExecuteAsync(sqlUpdate, new { ActionId = actionId, Id = id }, transaction);
 
                 if (rowsAffected == 0)
                 {
                     await transaction.RollbackAsync();
                     return false;
                 }
+
+                // 2b. Tulis skor kesehatan pasca-perbaikan ke mesin. machine_detail.ahs
+                //     bertipe varchar, jadi format dulu double-nya lewat CONVERT.
+                var sqlUpdateDetail = @"
+    UPDATE machine_detail
+    SET ahs = CONVERT(varchar(16), CONVERT(decimal(6,2), @Ahs)),
+        status_id = @StatusId,
+        last_update = GETDATE()
+    WHERE machine_id = (SELECT machine_id FROM undermaintenance WHERE id = @Id);";
+
+                await db.ExecuteAsync(sqlUpdateDetail, new { Ahs = request.Ahs, StatusId = request.StatusId, Id = id }, transaction);
 
                 // 3. Commit transaksi jika semua langkah berhasil
                 await transaction.CommitAsync();

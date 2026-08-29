@@ -123,8 +123,10 @@ namespace smart_table.Services
                 DaysBetweenEvents = data.DaysBetweenEvents ?? 0
             };
 
-            // 3. Tembak endpoint Flask ML API
-            var response = await _httpClient.PostAsJsonAsync("http://127.0.0.1:5000/predict", mlPayload);
+            // 3. Tembak endpoint Flask ML API. 127.0.0.1 di dalam container menunjuk ke
+            //    container itu sendiri - pakai ML_API_URL (di-set lewat docker-compose).
+            var mlBaseUrl = Environment.GetEnvironmentVariable("ML_API_URL") ?? "http://machine-learning:5000";
+            var response = await _httpClient.PostAsJsonAsync($"{mlBaseUrl}/predict", mlPayload);
 
             if (!response.IsSuccessStatusCode)
             {
