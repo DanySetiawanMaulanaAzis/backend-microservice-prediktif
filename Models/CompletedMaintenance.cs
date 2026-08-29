@@ -13,7 +13,8 @@
         public int? EventId { get; set; }
         public string? Event { get; set; }
         public string? MaintenanceType { get; set; }
-        public int? ActionId { get; set; }       
+        public int? ActionId { get; set; }
         public string? Action { get; set; }
+        public string? ActionBy { get; set; }
     }
 }
