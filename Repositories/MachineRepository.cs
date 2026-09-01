@@ -212,7 +212,7 @@ namespace smart_table.Repositories
 
             try
             {
-                // 1. Hapus data pada tabel machine terlebih dahulu
+                // 1. Hapus data utama pada tabel machine terlebih dahulu
                 var sqlDeleteMachine = @"
             DELETE FROM machine 
             WHERE id = @Id;";
@@ -226,7 +226,14 @@ namespace smart_table.Repositories
 
                 await db.ExecuteAsync(sqlDeleteDetail, new { Id = id }, transaction);
 
-                // 3. Commit transaksi jika semua query berhasil
+                // 3. Urutan ketiga: Hapus histori pada tabel undermaintenance
+                var sqlDeleteUnderMaintenance = @"
+            DELETE FROM undermaintenance 
+            WHERE machine_id = @Id;";
+
+                await db.ExecuteAsync(sqlDeleteUnderMaintenance, new { Id = id }, transaction);
+
+                // 4. Commit transaksi jika semua kueri berhasil
                 await transaction.CommitAsync();
 
                 return affectedRows > 0;
@@ -243,27 +250,90 @@ namespace smart_table.Repositories
             using var db = Connection;
 
             var sql = @"
-                SELECT
-                    md.id AS Id,
-                    md.machine_id AS MachineId,
-                    md.machine_name AS MachineName,
-                    md.location AS Location,
-                    md.production_year AS ProductionYear,
-                    md.operation_hours AS OperationHours,
-                    md.downtime_hours AS DowntimeHours,
-                    md.ahs AS Ahs,
-                    md.status_id AS StatusId,
-                    ms.status_name AS StatusName,
-                    md.action_id AS ActionId,
-                    md.last_7_days AS Last7Days,
-                    md.last_30_days AS Last30Days,
-                    md.last_90_days AS Last90Days,
-                    md.first_update AS FirstUpdate,
-                    md.last_update AS LastUpdate
-                FROM machine_detail md
-                INNER JOIN machine_status ms
-                    ON md.status_id = ms.id
-                ORDER BY md.id DESC;";
+        WITH RawData AS (
+            SELECT 
+                md.id AS Id, 
+                md.machine_id AS MachineId, 
+                md.machine_name AS MachineName, 
+                md.location AS Location, 
+                md.production_year AS ProductionYear,
+                md.operation_hours AS OperationHours,
+                md.downtime_hours AS DowntimeHours,
+                CAST(ROUND(md.ahs, 0) AS INT) AS Ahs,
+                md.status_id AS StatusId, 
+                ms.status_name AS StatusName,
+                md.action_id AS ActionId, 
+
+                -- Hari Sejak Servis Terakhir (event_id = 1)
+                ISNULL((
+                    SELECT TOP 1 DATEDIFF(DAY, u.last_update, GETDATE())
+                    FROM undermaintenance u
+                    WHERE u.machine_id = md.machine_id 
+                      AND u.event_id = 1 
+                      AND u.last_update IS NOT NULL
+                    ORDER BY u.last_update DESC
+                ), 0) AS DaysSinceLastService,
+
+                -- 7 Hari
+                ISNULL((
+                    SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                    FROM undermaintenance u
+                    WHERE u.machine_id = md.machine_id 
+                      AND u.last_update >= DATEADD(DAY, -7, GETDATE())
+                    ORDER BY u.last_update DESC
+                ), 0) AS Current7Days,
+                ISNULL((
+                    SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                    FROM undermaintenance u
+                    WHERE u.machine_id = md.machine_id 
+                      AND u.last_update <= DATEADD(DAY, -7, GETDATE())
+                    ORDER BY u.last_update DESC
+                ), 0) AS Last7Days,
+
+                -- 30 Hari
+                ISNULL((
+                    SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                    FROM undermaintenance u
+                    WHERE u.machine_id = md.machine_id 
+                      AND u.last_update >= DATEADD(DAY, -30, GETDATE())
+                    ORDER BY u.last_update DESC
+                ), 0) AS Current30Days,
+                ISNULL((
+                    SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                    FROM undermaintenance u
+                    WHERE u.machine_id = md.machine_id 
+                      AND u.last_update <= DATEADD(DAY, -30, GETDATE())
+                    ORDER BY u.last_update DESC
+                ), 0) AS Last30Days,
+
+                -- 90 Hari
+                ISNULL((
+                    SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                    FROM undermaintenance u
+                    WHERE u.machine_id = md.machine_id 
+                      AND u.last_update >= DATEADD(DAY, -90, GETDATE())
+                    ORDER BY u.last_update DESC
+                ), 0) AS Current90Days,
+                ISNULL((
+                    SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                    FROM undermaintenance u
+                    WHERE u.machine_id = md.machine_id 
+                      AND u.last_update <= DATEADD(DAY, -90, GETDATE())
+                    ORDER BY u.last_update DESC
+                ), 0) AS Last90Days,
+
+                md.first_update AS FirstUpdate, 
+                md.last_update AS LastUpdate
+            FROM machine_detail md
+            INNER JOIN machine_status ms ON md.status_id = ms.id
+        )
+        SELECT 
+            *,
+            (Current7Days - Last7Days) AS Diff7Days,
+            (Current30Days - Last30Days) AS Diff30Days,
+            (Current90Days - Last90Days) AS Diff90Days
+        FROM RawData
+        ORDER BY Ahs ASC, Id DESC;";
 
             return await db.QueryAsync<MachineDetail>(sql);
         }
@@ -273,27 +343,97 @@ namespace smart_table.Repositories
             using var db = Connection;
 
             var sql = @"
+                WITH RawData AS (
+                    SELECT 
+                        md.id AS Id, 
+                        md.machine_id AS MachineId, 
+                        md.machine_name AS MachineName, 
+                        md.location AS Location, 
+                        md.production_year AS ProductionYear,
+                        md.operation_hours AS OperationHours,
+                        md.downtime_hours AS DowntimeHours,
+                        CAST(ROUND(md.ahs, 0) AS INT) AS Ahs,
+                        md.status_id AS StatusId, 
+                        ms.status_name AS StatusName,
+                        md.action_id AS ActionId, 
+
+                        -- Menghitung hari sejak Service terakhir (event_id = 1) hingga hari ini
+                        ISNULL(
+                            DATEDIFF(DAY, last_service.created_at, GETDATE()), 
+                            0
+                        ) AS DaysSinceLastService,
+
+                        -- 7 Hari
+                        ISNULL((
+                            SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                            FROM undermaintenance u
+                            WHERE u.machine_id = md.machine_id
+                              AND u.last_update >= DATEADD(DAY, -7, GETDATE())
+                            ORDER BY u.last_update DESC
+                        ), 0) AS Current7Days,
+
+                        ISNULL((
+                            SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                            FROM undermaintenance u
+                            WHERE u.machine_id = md.machine_id
+                              AND u.last_update <= DATEADD(DAY, -7, GETDATE())
+                            ORDER BY u.last_update DESC
+                        ), 0) AS Last7Days,
+
+                        -- 30 Hari
+                        ISNULL((
+                            SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                            FROM undermaintenance u
+                            WHERE u.machine_id = md.machine_id
+                              AND u.last_update >= DATEADD(DAY, -30, GETDATE())
+                            ORDER BY u.last_update DESC
+                        ), 0) AS Current30Days,
+
+                        ISNULL((
+                            SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                            FROM undermaintenance u
+                            WHERE u.machine_id = md.machine_id
+                              AND u.last_update <= DATEADD(DAY, -30, GETDATE())
+                            ORDER BY u.last_update DESC
+                        ), 0) AS Last30Days,
+
+                        -- 90 Hari
+                        ISNULL((
+                            SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                            FROM undermaintenance u
+                            WHERE u.machine_id = md.machine_id
+                              AND u.last_update >= DATEADD(DAY, -90, GETDATE())
+                            ORDER BY u.last_update DESC
+                        ), 0) AS Current90Days,
+
+                        ISNULL((
+                            SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                            FROM undermaintenance u
+                            WHERE u.machine_id = md.machine_id
+                              AND u.last_update <= DATEADD(DAY, -90, GETDATE())
+                            ORDER BY u.last_update DESC
+                        ), 0) AS Last90Days,
+
+                        md.first_update AS FirstUpdate, 
+                        md.last_update AS LastUpdate
+                    FROM machine_detail md
+                    INNER JOIN machine_status ms 
+                        ON md.status_id = ms.id
+                    OUTER APPLY (
+                        SELECT TOP 1 service.created_at
+                        FROM undermaintenance service
+                        WHERE service.machine_id = md.machine_id
+                          AND service.event_id = 1 -- Event Service
+                        ORDER BY service.created_at DESC
+                    ) last_service
+                    WHERE md.id = @Id
+                )
                 SELECT 
-                    md.id AS Id, 
-                    md.machine_id AS MachineId, 
-                    md.machine_name AS MachineName, 
-                    md.location AS Location, 
-                    md.production_year AS ProductionYear,
-                    md.operation_hours AS OperationHours,
-                    md.downtime_hours AS DowntimeHours,
-                    md.ahs AS Ahs, 
-                    md.status_id AS StatusId, 
-                    ms.status_name AS StatusName,
-                    md.action_id AS ActionId, 
-                    md.last_7_days AS Last7Days, 
-                    md.last_30_days AS Last30Days, 
-                    md.last_90_days AS Last90Days, 
-                    md.first_update AS FirstUpdate, 
-                    md.last_update AS LastUpdate
-                FROM machine_detail md
-                INNER JOIN machine_status ms 
-                    ON md.status_id = ms.id
-                WHERE md.id = @Id;";
+                    *,
+                    (Current7Days - Last7Days) AS Diff7Days,
+                    (Current30Days - Last30Days) AS Diff30Days,
+                    (Current90Days - Last90Days) AS Diff90Days
+                FROM RawData;";
 
             return await db.QueryFirstOrDefaultAsync<MachineDetail>(sql, new { Id = id });
         }
@@ -461,7 +601,7 @@ namespace smart_table.Repositories
             em.maintenance_type AS MaintenanceType,
             md.id AS MachineDetailId, 
             md.location AS Location, 
-            md.ahs AS Ahs,
+            CAST(ROUND(um.ahs, 0) AS INT) AS Ahs,
             um.action_id AS ActionId,
                     act.action AS Action
         FROM undermaintenance um 
@@ -488,52 +628,64 @@ namespace smart_table.Repositories
 
             var sql = @"
         SELECT TOP 1
-            um.id AS Id, 
-            um.machine_id AS MachineId, 
-            um.machine_name AS MachineName, 
+            ISNULL(um.id, 0) AS Id, 
+            md.machine_id AS MachineId, 
+            md.machine_name AS MachineName, 
             md.production_year AS ProductionYear,
+            
             -- Perhitungan umur mesin berdasarkan tahun saat ini
             CASE 
                 WHEN md.production_year IS NOT NULL 
                 THEN YEAR(GETDATE()) - md.production_year 
                 ELSE NULL 
             END AS MachineAge,
+
             md.operation_hours AS OperationHours,
             md.downtime_hours AS DowntimeHours,
+
+            -- Jika belum pernah servis/perbaikan, hasil DATEDIFF bernilai NULL
             DATEDIFF(
                 DAY,
                 last_service.TargetDate,
-                COALESCE(um.last_update, um.created_at)
+                COALESCE(um.last_update, um.created_at, GETDATE())
             ) AS DaysSinceLastService,
+
             DATEDIFF(
                 DAY,
                 previous_failure.TargetDate,
-                COALESCE(um.last_update, um.created_at)
-            ) AS DaysBetweenEvents
-        FROM undermaintenance um 
-        LEFT JOIN machine_detail md 
-            ON um.machine_id = md.machine_id 
+                COALESCE(um.last_update, um.created_at, GETDATE())
+            ) AS DaysBetweenEvents,
+
+            -- Indikator tambahan untuk AI
+            CASE 
+                WHEN um.id IS NULL THEN 1 
+                ELSE 0 
+            END AS IsNewMachineWithoutHistory
+
+        FROM machine_detail md
+        LEFT JOIN undermaintenance um 
+            ON md.machine_id = um.machine_id 
+            AND um.maintenance = 0 
+            AND um.action_id IS NOT NULL
         OUTER APPLY (
             SELECT TOP 1
                 COALESCE(service.last_update, service.created_at) AS TargetDate
             FROM undermaintenance service
-            WHERE service.machine_id = um.machine_id
+            WHERE service.machine_id = md.machine_id
               AND service.event_id = 1
-              AND service.id < um.id
+              AND (um.id IS NULL OR service.id < um.id)
             ORDER BY service.id DESC
         ) last_service
         OUTER APPLY (
             SELECT TOP 1
                 COALESCE(failure.last_update, failure.created_at) AS TargetDate
             FROM undermaintenance failure
-            WHERE failure.machine_id = um.machine_id
+            WHERE failure.machine_id = md.machine_id
               AND failure.event_id = 2
-              AND failure.id < um.id
+              AND (um.id IS NULL OR failure.id < um.id)
             ORDER BY failure.id DESC
         ) previous_failure
         WHERE md.id = @MachineDetailId
-            AND um.maintenance = 0
-            AND um.action_id IS NOT NULL
         ORDER BY um.id DESC;";
 
             return await db.QueryFirstOrDefaultAsync<CompletedMaintenanceForAI>(
@@ -566,11 +718,21 @@ namespace smart_table.Repositories
 
             try
             {
-                // 1. Insert ke tabel [action] dan ambil Generated ID
+                // 1. Ambil machine_id dari record undermaintenance terlebih dahulu
+                var sqlGetMachineId = @"SELECT machine_id FROM undermaintenance WHERE id = @Id;";
+                int? machineId = await db.ExecuteScalarAsync<int?>(sqlGetMachineId, new { Id = id }, transaction);
+
+                if (machineId == null)
+                {
+                    await transaction.RollbackAsync();
+                    return false;
+                }
+
+                // 2. Insert ke tabel [action] dan ambil Generated ID
                 var sqlInsertAction = @"
-    INSERT INTO [action] (user_id, name, [action], created_at)
-    OUTPUT INSERTED.id
-    VALUES (@UserId, @Name, @Action, GETDATE());";
+            INSERT INTO [action] (user_id, name, [action], created_at)
+            OUTPUT INSERTED.id
+            VALUES (@UserId, @Name, @Action, GETDATE());";
 
                 int actionId = await db.ExecuteScalarAsync<int>(sqlInsertAction, new
                 {
@@ -579,17 +741,23 @@ namespace smart_table.Repositories
                     Action = string.IsNullOrWhiteSpace(request.Action) ? "Maintenance Completed" : request.Action
                 }, transaction);
 
-                // 2. Update status maintenance, action_id, last_update, ahs, dan status_id
-                var sqlUpdate = @"
-    UPDATE undermaintenance
-    SET maintenance = 0,
-        action_id = @ActionId,
-        ahs = @Ahs,
-        status_id = @StatusId,
-        last_update = GETDATE()
-    WHERE id = @Id;";
+                // 3. Update status maintenance, action_id, last_update, ahs, dan status_id pada tabel undermaintenance
+                var sqlUpdateUnderMaintenance = @"
+            UPDATE undermaintenance
+            SET maintenance = 0,
+                action_id = @ActionId,
+                ahs = @Ahs,
+                status_id = @StatusId,
+                last_update = GETDATE()
+            WHERE id = @Id;";
 
-                int rowsAffected = await db.ExecuteAsync(sqlUpdate, new { ActionId = actionId, Ahs = request.Ahs, StatusId = request.StatusId, Id = id}, transaction);
+                int rowsAffected = await db.ExecuteAsync(sqlUpdateUnderMaintenance, new
+                {
+                    ActionId = actionId,
+                    Ahs = request.Ahs,
+                    StatusId = request.StatusId,
+                    Id = id
+                }, transaction);
 
                 if (rowsAffected == 0)
                 {
@@ -597,7 +765,22 @@ namespace smart_table.Repositories
                     return false;
                 }
 
-                // 3. Commit transaksi jika semua langkah berhasil
+                // 4. Update ahs dan status_id pada tabel machine_detail
+                var sqlUpdateMachineDetail = @"
+            UPDATE machine_detail
+            SET ahs = @Ahs,
+                status_id = @StatusId,
+                last_update = GETDATE()
+            WHERE machine_id = @MachineId;";
+
+                await db.ExecuteAsync(sqlUpdateMachineDetail, new
+                {
+                    Ahs = request.Ahs,
+                    StatusId = request.StatusId,
+                    MachineId = machineId.Value
+                }, transaction);
+
+                // 5. Commit transaksi jika semua langkah berhasil
                 await transaction.CommitAsync();
                 return true;
             }

@@ -13,15 +13,17 @@
         public int StatusId { get; set; }
         public string StatusName { get; set; } = string.Empty;
         public int? ActionId { get; set; }
+        public decimal? Current7Days { get; set; }
         public decimal? Last7Days { get; set; }
+        public decimal? Diff7Days { get; set; }
+        public decimal? Current30Days { get; set; }
         public decimal? Last30Days { get; set; }
+        public decimal? Diff30Days { get; set; }
+        public decimal? Current90Days { get; set; }
         public decimal? Last90Days { get; set; }
+        public decimal? Diff90Days { get; set; }
         public DateTime FirstUpdate { get; set; }
         public DateTime LastUpdate { get; set; }
-
-        // --- Computed Properties untuk kalkulasi selisih ---
-        public decimal? Diff7Days => (Ahs.HasValue && Last7Days.HasValue) ? Ahs.Value - Last7Days.Value : null;
-        public decimal? Diff30Days => (Ahs.HasValue && Last30Days.HasValue) ? Ahs.Value - Last30Days.Value : null;
-        public decimal? Diff90Days => (Ahs.HasValue && Last90Days.HasValue) ? Ahs.Value - Last90Days.Value : null;
+        public int? DaysSinceLastService { get; set; }
     }
 }
