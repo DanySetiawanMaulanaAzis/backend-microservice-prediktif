@@ -604,10 +604,10 @@ namespace smart_table.Repositories
             CAST(ROUND(um.ahs, 0) AS INT) AS Ahs,
             um.action_id AS ActionId,
                     act.action AS Action
-        FROM undermaintenance um 
-        LEFT JOIN machine_detail md 
-            ON um.machine_id = md.machine_id 
-        LEFT JOIN event_maintenance em 
+        FROM undermaintenance um
+        LEFT JOIN machine_detail md
+            ON um.machine_id = md.machine_id
+        LEFT JOIN event_maintenance em
             ON um.event_id = em.id
         INNER JOIN action act
             ON um.action_id = act.id
