@@ -6,7 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddScoped<IMachineRepository, MachineRepository>();
-builder.Services.AddScoped<IMachineService, MachineService>();
+builder.Services.AddHttpClient<IMachineService, MachineService>();
 
 // Configure CORS
 builder.Services.AddCors(options =>

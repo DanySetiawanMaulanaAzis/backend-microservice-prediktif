@@ -198,6 +198,47 @@ namespace smart_table.Controllers
             return Ok(result);
         }
 
+        [HttpGet("completed-maintenance/history/smart-prioritization")]
+        public async Task<IActionResult> GetCompletedMaintenanceSmartPrioritization()
+        {
+            var result = await _service.GetCompletedMaintenanceForSmartPrioritizationAsync();
+
+            if (result == null || !result.Any())
+            {
+                return Ok(Enumerable.Empty<SmartPrioritization>());
+            }
+
+            return Ok(result);
+        }
+
+        [HttpGet("completed-maintenance/machine-detail/history/smart-prioritization/summary")]
+        public async Task<IActionResult> GetCompletedMaintenanceSummary()
+        {
+            var result = await _service.GetCompletedMaintenanceSummaryAsync();
+
+            if (result == null)
+            {
+                return NotFound(new
+                {
+                    message = "No completed maintenance summary data found."
+                });
+            }
+
+            return Ok(result);
+        }
+
+        [HttpGet("completed-maintenance/machine-detail/history/for-ai/{machineDetailId}")]
+        public async Task<IActionResult> GetCompletedMaintenanceHistoryByMachineDetailIdForAI(int machineDetailId)
+        {
+            var result = await _service.GetCompletedMaintenanceHistoryByMachineDetailIdAsyncForAI(machineDetailId);
+
+            // Cukup cek null saja
+            if (result == null)
+                return NotFound(new { message = $"No completed maintenance history with actions found for Machine Detail ID {machineDetailId}." });
+
+            return Ok(result);
+        }
+
         [HttpPost("under-maintenance")]
         public async Task<IActionResult> CreateUnderMaintenance([FromBody] CreateUnderMaintenanceRequest request)
         {
@@ -227,6 +268,24 @@ namespace smart_table.Controllers
                 message = "Status maintenance berhasil diubah ke 0 dan log action berhasil disimpan.",
                 id = id
             });
+        }
+
+        [HttpGet("predict/{machineDetailId}")]
+        public async Task<IActionResult> PredictMachineHealth(int machineDetailId)
+        {
+            try
+            {
+                var result = await _service.GetMachinePredictionAsync(machineDetailId);
+
+                if (result == null)
+                    return NotFound(new { message = $"Data history maintenance tidak ditemukan untuk Machine Detail ID {machineDetailId}." });
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = ex.Message });
+            }
         }
     }
 }
