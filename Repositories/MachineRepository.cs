@@ -524,7 +524,7 @@ namespace smart_table.Repositories
 
             md.id AS MachineDetailId, 
             md.location AS Location, 
-            md.ahs AS Ahs,
+            CAST(ROUND(md.ahs, 0) AS INT) AS Ahs,
             md.production_year AS ProductionYear,
             md.operation_hours AS OperationHours,
             md.downtime_hours AS DowntimeHours,
@@ -789,6 +789,117 @@ namespace smart_table.Repositories
                 await transaction.RollbackAsync();
                 throw;
             }
+        }
+
+        public async Task<IEnumerable<SmartPrioritization>> GetCompletedMaintenanceForSmartPrioritizationAsync()
+        {
+            using var db = Connection;
+
+            var sql = @"WITH LatestMaintenance AS (
+                SELECT 
+                    md.id AS Id, 
+                    um.machine_id AS MachineId, 
+                    um.machine_name AS MachineName, 
+                    CAST(ROUND(um.ahs, 0) AS INT) AS Ahs,
+                    um.last_update AS LastUpdate,
+                    um.action_id AS ActionId, 
+                    act.action AS Action,
+                    act.user_id AS UserId,
+                    act.name AS UserName,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY um.machine_id 
+                        ORDER BY um.id DESC
+                    ) AS rn
+                FROM undermaintenance um
+                INNER JOIN machine_detail md 
+                    ON um.machine_id = md.machine_id
+                INNER JOIN action act 
+                    ON um.action_id = act.id
+                WHERE um.maintenance = 0 
+                  AND um.action_id IS NOT NULL
+            ),
+            RawData AS (
+                SELECT 
+                    lm.Id,
+                    lm.MachineId,
+                    lm.MachineName,
+                    lm.Ahs,
+                    lm.LastUpdate,
+                    lm.ActionId,
+                    lm.Action,
+                    lm.UserId,
+                    lm.UserName,
+                    -- Pengecekan histori 30 hari terakhir per mesin
+                    CASE 
+                        WHEN EXISTS (
+                            SELECT 1 
+                            FROM undermaintenance u 
+                            WHERE u.machine_id = lm.MachineId 
+                              AND u.last_update >= DATEADD(DAY, -30, GETDATE())
+                        ) THEN CAST(1 AS BIT)
+                        ELSE CAST(0 AS BIT)
+                    END AS Has30DaysHistory,
+                    -- AHS 30 Hari Saat Ini
+                    (
+                        SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                        FROM undermaintenance u
+                        WHERE u.machine_id = lm.MachineId 
+                          AND u.last_update >= DATEADD(DAY, -30, GETDATE())
+                        ORDER BY u.last_update DESC
+                    ) AS Current30Days,
+                    -- AHS 30 Hari Lalu
+                    (
+                        SELECT TOP 1 CAST(ROUND(u.ahs, 0) AS INT)
+                        FROM undermaintenance u
+                        WHERE u.machine_id = lm.MachineId 
+                          AND u.last_update <= DATEADD(DAY, -30, GETDATE())
+                        ORDER BY u.last_update DESC
+                    ) AS Last30Days
+                FROM LatestMaintenance lm
+                WHERE lm.rn = 1
+            )
+            SELECT 
+                *,
+                CASE 
+                    WHEN Current30Days IS NOT NULL AND Last30Days IS NOT NULL 
+                    THEN (Current30Days - Last30Days)
+                    ELSE NULL
+                END AS Diff30Days
+            FROM RawData
+            ORDER BY Ahs ASC, MachineId ASC;";
+
+            return await db.QueryAsync<SmartPrioritization>(sql);
+        }
+
+        public async Task<SmartPrioritizationSummary?> GetCompletedMaintenanceSummaryAsync()
+        {
+            using var db = Connection;
+
+            var sql = @"
+        WITH LatestMaintenance AS (
+            SELECT 
+                um.machine_id,
+                um.status_id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY um.machine_id 
+                    ORDER BY um.id DESC
+                ) AS rn
+            FROM undermaintenance um
+            WHERE um.maintenance = 0 
+                AND um.action_id IS NOT NULL
+        )
+        SELECT 
+            ISNULL(SUM(CASE WHEN ms.status_name = 'Routine' THEN 1 ELSE 0 END), 0) AS Routine,
+            ISNULL(SUM(CASE WHEN ms.status_name = 'Minor' THEN 1 ELSE 0 END), 0) AS Minor,
+            ISNULL(SUM(CASE WHEN ms.status_name = 'Major' THEN 1 ELSE 0 END), 0) AS Major,
+            ISNULL(SUM(CASE WHEN ms.status_name = 'Critical' THEN 1 ELSE 0 END), 0) AS Critical,
+            COUNT(lm.machine_id) AS TotalMachines
+        FROM LatestMaintenance lm
+        LEFT JOIN machine_status ms 
+            ON lm.status_id = ms.id
+        WHERE lm.rn = 1;";
+
+            return await db.QueryFirstOrDefaultAsync<SmartPrioritizationSummary>(sql);
         }
     }
 }

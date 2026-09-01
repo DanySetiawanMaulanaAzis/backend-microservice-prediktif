@@ -198,6 +198,35 @@ namespace smart_table.Controllers
             return Ok(result);
         }
 
+        [HttpGet("completed-maintenance/history/smart-prioritization")]
+        public async Task<IActionResult> GetCompletedMaintenanceSmartPrioritization()
+        {
+            var result = await _service.GetCompletedMaintenanceForSmartPrioritizationAsync();
+
+            if (result == null || !result.Any())
+            {
+                return Ok(Enumerable.Empty<SmartPrioritization>());
+            }
+
+            return Ok(result);
+        }
+
+        [HttpGet("completed-maintenance/machine-detail/history/smart-prioritization/summary")]
+        public async Task<IActionResult> GetCompletedMaintenanceSummary()
+        {
+            var result = await _service.GetCompletedMaintenanceSummaryAsync();
+
+            if (result == null)
+            {
+                return NotFound(new
+                {
+                    message = "No completed maintenance summary data found."
+                });
+            }
+
+            return Ok(result);
+        }
+
         [HttpGet("completed-maintenance/machine-detail/history/for-ai/{machineDetailId}")]
         public async Task<IActionResult> GetCompletedMaintenanceHistoryByMachineDetailIdForAI(int machineDetailId)
         {

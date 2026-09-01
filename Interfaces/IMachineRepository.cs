@@ -20,5 +20,7 @@ namespace smart_table.Interfaces
         Task<CompletedMaintenanceForAI?> GetCompletedMaintenanceHistoryByMachineDetailIdAsyncForAI(int machineDetailId);
         Task<int> CreateUnderMaintenanceAsync(CreateUnderMaintenanceRequest request);
         Task<bool> UpdateUnderMaintenanceStatusToFalseAsync(int id, UpdateUnderMaintenanceStatusRequest request);
+        Task<IEnumerable<SmartPrioritization>> GetCompletedMaintenanceForSmartPrioritizationAsync();
+        Task<SmartPrioritizationSummary?> GetCompletedMaintenanceSummaryAsync();
     }
 }

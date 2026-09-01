@@ -95,6 +95,16 @@ namespace smart_table.Services
             return await _repository.GetCompletedMaintenanceHistoryByMachineDetailIdAsyncForAI(machineDetailId);
         }
 
+        public async Task<IEnumerable<SmartPrioritization>> GetCompletedMaintenanceForSmartPrioritizationAsync()
+        {
+            return await _repository.GetCompletedMaintenanceForSmartPrioritizationAsync();
+        }
+
+        public async Task<SmartPrioritizationSummary?> GetCompletedMaintenanceSummaryAsync()
+        {
+            return await _repository.GetCompletedMaintenanceSummaryAsync();
+        }
+
         public async Task<int> CreateUnderMaintenanceAsync(CreateUnderMaintenanceRequest request)
         {
             return await _repository.CreateUnderMaintenanceAsync(request);
