@@ -133,8 +133,8 @@ namespace smart_table.Services
                 DaysBetweenEvents = data.DaysBetweenEvents ?? 0
             };
 
-            // 3. Tembak endpoint Flask ML API
-            var response = await _httpClient.PostAsJsonAsync("http://127.0.0.1:5000/predict", mlPayload);
+            // 3. Tembak endpoint Flask ML API (base address = ML_API_URL, configured in Program.cs)
+            var response = await _httpClient.PostAsJsonAsync("predict", mlPayload);
 
             if (!response.IsSuccessStatusCode)
             {
